@@ -1,0 +1,162 @@
+{
+  "name": "codezero",
+  "displayName": "CodeZero",
+  "description": "A VS Code extension that flags energy-heavy code patterns and suggests greener alternatives.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Linters",
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:javascript",
+    "onLanguage:typescript",
+    "onLanguage:javascriptreact",
+    "onLanguage:typescriptreact",
+    "onLanguage:python",
+    "onLanguage:java",
+    "onCommand:codezero.scanCurrentFile",
+    "onCommand:codezero.aiRefactorCurrentFile",
+    "onCommand:codezero.stopAiRefactor",
+    "onCommand:codezero.configureAi",
+    "onView:codezero.dashboard",
+    "onView:codezero.findings"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "codezero.scanCurrentFile",
+        "title": "CodeZero: Scan Current File"
+      },
+      {
+        "command": "codezero.refresh",
+        "title": "CodeZero: Refresh"
+      },
+      {
+        "command": "codezero.aiRefactorCurrentFile",
+        "title": "CodeZero: AI Refactor Current File"
+      },
+      {
+        "command": "codezero.stopAiRefactor",
+        "title": "CodeZero: Stop AI Refactor"
+      },
+      {
+        "command": "codezero.configureAi",
+        "title": "CodeZero: Configure AI Refactor"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codezero",
+          "title": "CodeZero",
+          "icon": "media/codezero.svg"
+        }
+      ]
+    },
+    "views": {
+      "codezero": [
+        {
+          "id": "codezero.dashboard",
+          "name": "Dashboard",
+          "type": "webview"
+        },
+        {
+          "id": "codezero.findings",
+          "name": "Findings"
+        }
+      ]
+    },
+    "menus": {
+      "editor/context": [
+        {
+          "command": "codezero.configureAi",
+          "group": "modification"
+        },
+        {
+          "command": "codezero.aiRefactorCurrentFile",
+          "group": "modification"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "codezero.refresh",
+          "when": "view == codezero.dashboard || view == codezero.findings",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "CodeZero",
+      "properties": {
+        "codezero.enableInlineDiagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show CodeZero diagnostics as you type."
+        },
+        "codezero.minimumSeverity": {
+          "type": "string",
+          "enum": [
+            "info",
+            "warning"
+          ],
+          "default": "info",
+          "description": "Lowest CodeZero severity to display."
+        },
+        "codezero.aiProvider": {
+          "type": "string",
+          "enum": [
+            "codezero",
+            "openai",
+            "gemini"
+          ],
+          "default": "codezero",
+          "description": "Provider used for AI refactoring suggestions. Use codezero for the hosted backend, or openai/gemini for development BYOK fallback."
+        },
+        "codezero.aiModel": {
+          "type": "string",
+          "default": "gemini-2.5-flash",
+          "description": "Model used for AI refactoring. Example values: gemini-2.5-flash or gpt-4o-mini."
+        },
+        "codezero.hostedAiEndpoint": {
+          "type": "string",
+          "default": "https://api.codezero.dev/v1/refactor",
+          "description": "Hosted CodeZero AI endpoint. Keep provider API keys on this server, not inside the published extension."
+        },
+        "codezero.openAIApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Development fallback OpenAI API key used when codezero.aiProvider is openai."
+        },
+        "codezero.googleApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Development fallback Google AI API key used when codezero.aiProvider is gemini."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/babel__traverse": "^7.28.0",
+    "@types/node": "^20.14.10",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.5.4"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.29.2",
+    "@babel/traverse": "^7.29.0",
+    "@lezer/common": "^1.5.1",
+    "@lezer/python": "^1.1.18",
+    "@tgwf/co2": "^0.18.0",
+    "java-parser": "^3.0.1"
+  }
+}
