@@ -628,41 +628,90 @@ async function requestOpenAiSuggestion(apiKey: string, model: string, prompt: st
 }
 
 async function requestGeminiSuggestion(apiKey: string, model: string, prompt: string, signal?: AbortSignal): Promise<string> {
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
-    {
-      method: "POST",
-      signal,
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: prompt
-              }
-            ]
-          }
-        ],
-        generationConfig: {
-          responseMimeType: "application/json",
-          temperature: 0.2
-        }
-      })
-    }
-  );
+  const models = geminiModelFallbacks(model);
+  const errors: string[] = [];
 
-  if (!response.ok) {
-    throw new Error(`Gemini request failed with ${response.status}. Model used: ${model}. ${await responseErrorDetails(response)}`);
+  for (const candidateModel of models) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      signal?.throwIfAborted();
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(candidateModel)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: "POST",
+          signal,
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: prompt
+                  }
+                ]
+              }
+            ],
+            generationConfig: {
+              responseMimeType: "application/json",
+              temperature: 0.2
+            }
+          })
+        }
+      );
+
+      if (response.ok) {
+        const data = (await response.json()) as {
+          candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+        };
+
+        return data.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("\n").trim() || "No suggestion returned.";
+      }
+
+      const details = await responseErrorDetails(response);
+      errors.push(`Model ${candidateModel} failed with ${response.status}. ${details}`);
+
+      if (!isRetryableAiStatus(response.status)) {
+        break;
+      }
+
+      await delay(600 * (attempt + 1), signal);
+    }
   }
 
-  const data = (await response.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  };
+  throw new Error(`Gemini request failed after retries. ${errors.join(" ")}`);
+}
 
-  return data.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("\n").trim() || "No suggestion returned.";
+function geminiModelFallbacks(model: string): string[] {
+  return uniqueStrings([model, "gemini-2.5-flash-lite", "gemini-2.0-flash"]);
+}
+
+function isRetryableAiStatus(status: number): boolean {
+  return status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function delay(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason);
+      return;
+    }
+
+    const timeout = setTimeout(resolve, milliseconds);
+    signal?.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timeout);
+        reject(signal.reason);
+      },
+      { once: true }
+    );
+  });
 }
 
 async function responseErrorDetails(response: Response): Promise<string> {

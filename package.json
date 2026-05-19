@@ -3,7 +3,11 @@
   "displayName": "CodeZero",
   "description": "A VS Code extension that flags energy-heavy code patterns and suggests greener alternatives.",
   "version": "0.1.0",
-  "publisher": "local",
+  "publisher": "codezero-ai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/srikshith512/code_zero.git"
+  },
   "license": "MIT",
   "engines": {
     "vscode": "^1.90.0"
@@ -125,7 +129,7 @@
         },
         "codezero.hostedAiEndpoint": {
           "type": "string",
-          "default": "https://api.codezero.dev/v1/refactor",
+          "default": "https://codezero-ai-api.onrender.com/v1/refactor",
           "description": "Hosted CodeZero AI endpoint. Keep provider API keys on this server, not inside the published extension."
         },
         "codezero.openAIApiKey": {

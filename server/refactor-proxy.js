@@ -4,6 +4,10 @@ const port = Number(process.env.PORT || 8787);
 const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 const maxPromptBytes = Number(process.env.MAX_PROMPT_BYTES || 750000);
 const requestsPerHour = Number(process.env.RATE_LIMIT_PER_HOUR || 60);
+const fallbackModels = (process.env.GEMINI_FALLBACK_MODELS || "gemini-2.5-flash-lite,gemini-2.0-flash")
+  .split(",")
+  .map((model) => model.trim())
+  .filter(Boolean);
 const rateWindowMs = 60 * 60 * 1000;
 const hitsByClient = new Map();
 
@@ -38,38 +42,8 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    const aiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(geminiApiKey)}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [{ text: prompt }]
-            }
-          ],
-          generationConfig: {
-            responseMimeType: "application/json",
-            temperature: 0.2
-          }
-        })
-      }
-    );
-
-    if (!aiResponse.ok) {
-      sendJson(response, aiResponse.status, {
-        error: "Gemini request failed.",
-        details: await safeReadText(aiResponse)
-      });
-      return;
-    }
-
-    const data = await aiResponse.json();
-    const content = data?.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("\n").trim();
-    sendJson(response, 200, { content: content || "" });
+    const result = await requestGeminiWithFallbacks(model, prompt);
+    sendJson(response, 200, { content: result.content || "", model: result.model });
   } catch (error) {
     sendJson(response, 500, {
       error: error instanceof Error ? error.message : "Unknown proxy error."
@@ -87,6 +61,65 @@ function normalizeModel(model) {
     return "gemini-2.5-flash";
   }
   return trimmed.startsWith("models/") ? trimmed.slice("models/".length) : trimmed;
+}
+
+async function requestGeminiWithFallbacks(primaryModel, prompt) {
+  const models = uniqueStrings([primaryModel, ...fallbackModels]);
+  const errors = [];
+
+  for (const model of models) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const aiResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(geminiApiKey)}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [{ text: prompt }]
+              }
+            ],
+            generationConfig: {
+              responseMimeType: "application/json",
+              temperature: 0.2
+            }
+          })
+        }
+      );
+
+      if (aiResponse.ok) {
+        const data = await aiResponse.json();
+        const content = data?.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("\n").trim();
+        return { content, model };
+      }
+
+      const details = await safeReadText(aiResponse);
+      errors.push(`Model ${model} failed with ${aiResponse.status}: ${details}`);
+
+      if (!isRetryableAiStatus(aiResponse.status)) {
+        break;
+      }
+
+      await delay(600 * (attempt + 1));
+    }
+  }
+
+  throw new Error(`Gemini request failed after retries. ${errors.join(" ")}`);
+}
+
+function isRetryableAiStatus(status) {
+  return status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+function uniqueStrings(values) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function clientKey(request) {
